@@ -7,12 +7,12 @@ class Settings(BaseModel):
     app_name: str = "Movie Review Backend"
     version: str = "1.0.0"
     env: str = os.environ.get("ENV", "dev")
-    database_url: str = os.environ.get("DATABASE_URL", "sqlite:///./data.db")
 
-    # JWT auth config
-    jwt_secret_key: str = os.environ.get("JWT_SECRET_KEY", "dev-secret-change-me")
-    jwt_algorithm: str = "HS256"
-    jwt_access_token_expires_minutes: int = 60 * 24  # 1 day
+    # Firebase configuration
+    # Path to Firebase service account JSON file
+    firebase_credentials_path: str = os.environ.get("FIREBASE_CREDENTIALS_PATH", "")
+    # Or use JSON string directly (useful for deployment)
+    firebase_credentials_json: str = os.environ.get("FIREBASE_CREDENTIALS_JSON", "")
 
     # Movies API
     ghibli_films_url: str = os.environ.get(

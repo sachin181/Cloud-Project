@@ -2,13 +2,11 @@ from fastapi import FastAPI
 from .config import settings
 from .services.db import init_db
 
-# Import models so SQLModel knows all tables
-from .models import user, review  # noqa: F401
-
 from .routers import health, movies, reviews, auth
 
 app = FastAPI(title=settings.app_name, version=settings.version)
 
+# Initialize Firebase/Firestore
 init_db()
 
 app.include_router(health.router)

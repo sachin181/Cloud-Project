@@ -1,69 +1,49 @@
 # app/routers/auth.py
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordRequestForm
-from sqlmodel import Session
+from datetime import datetime
+from fastapi import APIRouter, Depends, HTTPException
+from firebase_admin import auth
+from firebase_admin.exceptions import FirebaseError
 
-from ..models.user import User, UserCreate, UserRead
-from ..services.db import get_session
-from ..services.auth import (
-    get_user_by_email,
-    hash_password,
-    verify_password,
-    create_access_token,
-    get_current_user,
-)
+from ..models.user import UserRead
+from ..services.auth import get_current_user, get_user_id
+from ..services.db import get_db
+from google.cloud.firestore import Client as FirestoreClient
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-@router.post("/register", response_model=UserRead, status_code=201)
-def register(payload: UserCreate, session: Session = Depends(get_session)):
-    """
-    Create a new user account.
-    """
-    existing = get_user_by_email(payload.email, session)
-    if existing:
-        raise HTTPException(status_code=400, detail="Email already registered")
-
-    user = User(
-        email=payload.email,
-        hashed_password=hash_password(payload.password),
-    )
-    session.add(user)
-    session.commit()
-    session.refresh(user)
-    return user
-
-
-@router.post("/login")
-def login(
-    form_data: OAuth2PasswordRequestForm = Depends(),
-    session: Session = Depends(get_session),
+@router.get("/me", response_model=UserRead)
+def me(
+    current_user: dict = Depends(get_current_user),
+    db: FirestoreClient = Depends(get_db),
 ):
     """
-    OAuth2 password-flow login.
-
-    Swagger's Authorize popup will send:
-      - username = email
-      - password = password
-    """
-    # form_data.username is the email
-    user = get_user_by_email(form_data.username, session)
-    if not user or not verify_password(form_data.password, user.hashed_password):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
-        )
-
-    # Store user id as string in "sub"
-    token = create_access_token({"sub": str(user.id)})
-    return {"access_token": token, "token_type": "bearer"}
-
-
-@router.get("/me", response_model=UserRead)
-def me(current_user: User = Depends(get_current_user)):
-    """
     Return the currently authenticated user.
+    
+    If the user doesn't exist in Firestore, create a user document.
+    The user is authenticated via Firebase ID token.
     """
-    return current_user
+    uid = current_user.get("uid")
+    email = current_user.get("email", "")
+    
+    if not uid:
+        raise HTTPException(status_code=401, detail="Invalid token: missing uid")
+    
+    # Check if user exists in Firestore, if not create it
+    user_ref = db.collection("users").document(uid)
+    user_doc = user_ref.get()
+    
+    if not user_doc.exists:
+        # Create user document in Firestore
+        user_data = {
+            "uid": uid,
+            "email": email,
+            "created_at": datetime.utcnow(),
+        }
+        user_ref.set(user_data)
+        return UserRead(**user_data)
+    
+    # Return existing user
+    user_data = user_doc.to_dict()
+    return UserRead(**user_data)

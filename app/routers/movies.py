@@ -4,10 +4,9 @@ from typing import Optional, List, Dict, Any
 
 import requests
 from fastapi import APIRouter, HTTPException, Query, Depends
-from sqlmodel import Session, select
+from google.cloud.firestore import Client as FirestoreClient
 
-from ..services.db import get_session
-from ..models.review import Review
+from ..services.db import get_db
 
 router = APIRouter(prefix="/movies", tags=["movies"])
 
@@ -161,7 +160,7 @@ def get_movie(movie_id: str):
 @router.get("/{movie_id}/sentiment")
 def get_movie_sentiment(
     movie_id: str,
-    session: Session = Depends(get_session),
+    db: FirestoreClient = Depends(get_db),
 ):
     """
     Compute overall sentiment for a movie based on all stored reviews.
@@ -172,11 +171,16 @@ def get_movie_sentiment(
       - overall_sentiment  ("positive" | "neutral" | "negative" | null)
       - sentiment_score (average of scores, -1..1, or null)
     """
-    stmt = select(Review).where(Review.movie_id == movie_id)
-    reviews: List[Review] = session.exec(stmt).all()
+    # Query reviews for this movie from Firestore
+    reviews_query = (
+        db.collection("reviews")
+        .where("movie_id", "==", movie_id)
+        .get()
+    )
+    
+    reviews = [doc.to_dict() for doc in reviews_query]
 
     if not reviews:
-        # You can also choose to return 404 or a neutral default here
         return {
             "movie_id": movie_id,
             "review_count": 0,
@@ -186,19 +190,14 @@ def get_movie_sentiment(
         }
 
     # Average numeric rating
-    avg_rating = sum(r.rating for r in reviews) / len(reviews)
+    avg_rating = sum(r.get("rating", 0) for r in reviews) / len(reviews)
 
     # Average sentiment score (only where present)
-    scores = [r.sentiment_score for r in reviews if r.sentiment_score is not None]
-    avg_sent_score: Optional[float] = (
-        sum(scores) / len(scores) if scores else None
-    )
-
-        # Average numeric rating
-    avg_rating = sum(r.rating for r in reviews) / len(reviews)
-
-    # Average sentiment score (only where present)
-    scores = [r.sentiment_score for r in reviews if r.sentiment_score is not None]
+    scores = [
+        r.get("sentiment_score")
+        for r in reviews
+        if r.get("sentiment_score") is not None
+    ]
     avg_sent_score: Optional[float] = (
         sum(scores) / len(scores) if scores else None
     )

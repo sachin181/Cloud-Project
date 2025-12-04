@@ -1,19 +1,23 @@
 from typing import Optional
 from datetime import datetime
-from sqlmodel import SQLModel, Field
-from pydantic import EmailStr
+from pydantic import BaseModel, EmailStr
 
-class User(SQLModel, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
-    email: EmailStr = Field(index=True, unique=True)
-    hashed_password: str
-    created_at: datetime = Field(default_factory=datetime.utcnow)
 
-class UserCreate(SQLModel):
+class User(BaseModel):
+    """User model for Firestore."""
+    uid: str  # Firebase user ID
+    email: EmailStr
+    created_at: datetime
+
+
+class UserCreate(BaseModel):
+    """Schema for creating a user (used for registration info)."""
     email: EmailStr
     password: str
 
-class UserRead(SQLModel):
-    id: int
+
+class UserRead(BaseModel):
+    """Schema for reading user data."""
+    uid: str
     email: EmailStr
     created_at: datetime
